@@ -29,7 +29,7 @@ reviews:
       instructions: |
         Check schema changes for:
         - Proper relation definitions (foreign keys, cascade rules).
-        - Consistent naming conventions (camelCase fields, PascalCase models).
+        - Consistent naming conventions (camelCase fields, PascalCase models , snake_case tables (map)).
         - Required fields have sensible defaults or are nullable for existing data.
         - Soft delete pattern: models that need it should have a `deletedAt DateTime?` field.
 
@@ -48,7 +48,7 @@ reviews:
         Verify services follow project conventions:
         - Extend `BaseService<TRepository>` for standard CRUD.
         - Validate accountId ownership before mutations.
-        - Use NestJS exceptions (NotFoundException, BadRequestException, etc.).
+        - Use exceptions from @common/exceptions (NotFoundException, BadRequestException, etc.).
         - Multi-table writes wrapped in `prisma.$transaction()`.
         - No direct Prisma client calls — use repository methods.
 
@@ -57,8 +57,21 @@ reviews:
         Verify repositories follow project conventions:
         - Extend `BaseRepository` with proper generic types.
         - All queries scoped by `accountId` in where clauses.
+        - No raw SQL without parameterization.
         - Use base class helpers (_create, _findUnique, _update, _delete, _findWithPagination).
         - Soft-deletable models filter `deletedAt: null`.
+
+    - path: "src/modules/**/select-inputs/**"
+      instructions: |
+        Verify select inputs follow project conventions:
+        - Only select fields that are exposed in the corresponding Response DTO.
+        - Never use `select: { ...allFields }` or return full model objects.
+        - Do not fetch unused columns from the database.
+        - Ensure selected fields align exactly with @Expose() fields in Response DTO.
+        - Avoid selecting sensitive fields (password, tokens, internal flags).
+        - Keep select definitions minimal to prevent over-fetching.
+        - If relations are included, select only required sub-fields (no full nested objects).
+        - Select definitions must be deterministic and consistent across services.
 
     - path: "src/modules/**/dtos/**"
       instructions: |
@@ -67,6 +80,9 @@ reviews:
         - GraphQL support via `@InputType()` and `@Field()`.
         - Response DTOs use `class-transformer` (@Exclude, @Expose).
         - Create/Update/Response DTOs in separate files.
+        - No business logic inside DTOs.
+        - Enums reused from central definitions.
+        - No sensitive data (passwords, tokens, secrets) returned in responses.
 
     - path: "src/core/**"
       instructions: |
@@ -82,6 +98,7 @@ reviews:
         - Edge cases and error paths covered.
         - No hardcoded magic values — use @faker-js/faker.
         - Proper cleanup in afterEach/afterAll.
+        - Validate multi-tenant isolation (accountId).
 
     - path: ".github/workflows/**"
       instructions: |
@@ -89,6 +106,40 @@ reviews:
         - No `|| true` on test/lint/typecheck steps (must fail the build).
         - Secrets not leaked in logs.
         - Proper caching and artifact handling.
+
+    - path: "src/**"
+      instructions: |
+        Security review checklist:
+        - No usage of `any`types.
+        - No console.log in production code.
+        - Use project logger abstraction.
+        - No debug logs committed.
+        - No commented-out code.
+        - Avoid deeply nested conditionals.
+        - Avoid Nested if statements . Use  Guard Clauses (Early returns) instead.
+
+    - path: "package.json"
+      instructions: |
+        Dependency review:
+        - No unused dependencies.
+        - Avoid deprecated packages.
+        - No duplicate functionality libraries.
+        - Lockfile must be committed.
+        - Verify Husky & typecheck setup:
+        - `husky` must be configured properly.
+        - A `typecheck` script must exist.
+        - `typecheck` must run `tsc --noEmit`.
+        - `prepare` script should install husky (e.g., `husky install`).
+
+    - path: ".husky/**"
+      instructions: |
+        Verify Husky configuration:
+        - A pre-commit hook must exist.
+        - Pre-commit hook must run `npm run typecheck`.
+        - The hook must fail the commit if typecheck fails.
+        - No usage of `|| true` or command chaining that bypasses failures.
+        - Ensure the script does not skip in CI unless explicitly intended.
+
 
 chat:
   auto_reply: true
