@@ -8,158 +8,89 @@ reviews:
   auto_review:
     enabled: true
     drafts: false
+  request_changes_workflow: true
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: false
 
-request_changes_workflow: true
-high_level_summary: true
-poem: false
-review_status: true
-collapse_walkthrough: false
+  path_instructions:
+    - path: "prisma/migrations/**"
+      instructions: |
+        Review migrations for PostgreSQL safety:
+        - Will this migration lock a large table? Flag any ALTER TABLE on tables with >100k rows.
+        - Is the migration backwards-compatible with the currently deployed application?
+        - Are new columns nullable or have defaults? Required columns on existing tables will break inserts.
+        - Are indexes created CONCURRENTLY where appropriate?
+        - Check for potential downtime risks (table rewrites, exclusive locks).
+        - Verify both main and demo databases will migrate correctly.
 
-path_instructions:
+    - path: "prisma/schema.prisma"
+      instructions: |
+        Check schema changes for:
+        - Proper relation definitions (foreign keys, cascade rules).
+        - Consistent naming conventions (camelCase fields, PascalCase models).
+        - Required fields have sensible defaults or are nullable for existing data.
+        - Soft delete pattern: models that need it should have a `deletedAt DateTime?` field.
 
-  - path: "prisma/migrations/**"
-    instructions: |
-      Review migrations for PostgreSQL safety:
-      - Will this migration lock a large table? Flag any ALTER TABLE on tables with >100k rows. 
-      - Is the migration backwards-compatible with the currently deployed application?
-      - Are new columns nullable or have defaults? Required columns on existing tables will break inserts.
-      - Are indexes created CONCURRENTLY where appropriate?
-      - Check for potential downtime risks (table rewrites, exclusive locks).
-      - Verify both main and demo databases will migrate correctly.
+    - path: "src/modules/**/controllers/**"
+      instructions: |
+        Verify controllers follow project conventions:
+        - `@AuthRoleGuard()` at class level for authentication.
+        - `@CheckRole()` for authorization where needed.
+        - `@CurrentAccountId()` to extract accountId — never trust client-sent account IDs.
+        - `@TransformDto` for response transformation.
+        - Swagger decorators for API documentation.
+        - Controllers must be thin — no business logic, delegate to services.
 
-  - path: "prisma/schema.prisma"
-    instructions: |
-      Check schema changes for:
-      - Proper relation definitions (foreign keys, cascade rules).
-      - Consistent naming conventions (camelCase fields, PascalCase models , snake_case tables (map)).
-      - Required fields have sensible defaults or are nullable for existing data.
-      - Soft delete pattern: models that need it should have a `deletedAt DateTime?` field.
-      - Ensure frequently filtered fields have @@index.
-      - Composite indexes match common query patterns.
-      - Unique constraints reflect business rules.
+    - path: "src/modules/**/services/**"
+      instructions: |
+        Verify services follow project conventions:
+        - Extend `BaseService<TRepository>` for standard CRUD.
+        - Validate accountId ownership before mutations.
+        - Use NestJS exceptions (NotFoundException, BadRequestException, etc.).
+        - Multi-table writes wrapped in `prisma.$transaction()`.
+        - No direct Prisma client calls — use repository methods.
 
-  - path: "src/modules/**/controllers/**"
-    instructions: |
-      Verify controllers follow project conventions:
-      - `@AuthRoleGuard()` at class level for authentication.
-      - `@CheckRole()` for authorization where needed.
-      - `@CurrentAccountId()` to extract accountId — never trust client-sent account IDs.
-      - `@TransformDto` for response transformation.
-      - Swagger decorators for API documentation.
-      - Controllers must be thin — no business logic, delegate to services.
-      - RESTful naming conventions.
-      - Consistent HTTP status codes.
-      - Proper error response format.
-      - Swagger documentation complete and accurate.
+    - path: "src/modules/**/repositories/**"
+      instructions: |
+        Verify repositories follow project conventions:
+        - Extend `BaseRepository` with proper generic types.
+        - All queries scoped by `accountId` in where clauses.
+        - Use base class helpers (_create, _findUnique, _update, _delete, _findWithPagination).
+        - Soft-deletable models filter `deletedAt: null`.
 
-  - path: "src/modules/**/services/**"
-    instructions: |
-      Verify services follow project conventions:
-      - Extend `BaseService<TRepository>` for standard CRUD.
-      - Validate accountId ownership before mutations.
-      - Use exceptions from @common/exceptions (NotFoundException, BadRequestException, etc.).
-      - Multi-table writes wrapped in `prisma.$transaction()`.
-      - No direct Prisma client calls — use repository methods.
-      - Any create/update/delete affecting multiple models MUST use prisma.$transaction().
-      - No partial writes allowed.
-      - Ensure idempotency where possible.
+    - path: "src/modules/**/dtos/**"
+      instructions: |
+        Verify DTOs follow project conventions:
+        - All input fields have `class-validator` decorators.
+        - GraphQL support via `@InputType()` and `@Field()`.
+        - Response DTOs use `class-transformer` (@Exclude, @Expose).
+        - Create/Update/Response DTOs in separate files.
 
-  - path: "src/modules/**/repositories/**"
-    instructions: |
-      Verify repositories follow project conventions:
-      - Extend `BaseRepository` with proper generic types.
-      - No raw SQL without parameterization.
-      - All queries scoped by `accountId` in where clauses.
-      - Use base class helpers (_create, _findUnique, _update, _delete, _findWithPagination).
-      - Soft-deletable models filter `deletedAt: null`.
-      - All list queries must support cursor or offset pagination.
-      - Enforce max page size.
-      - Sorting must be deterministic (include id as secondary sort).
+    - path: "src/core/**"
+      instructions: |
+        Core infrastructure changes need extra scrutiny:
+        - Changes here affect every module. Verify backwards compatibility.
+        - Check that existing module contracts are preserved.
+        - Ensure auth/authorization changes don't create security gaps.
 
-  - path: "src/modules/**/select-inputs/**"
-    instructions: |
-      Verify select inputs follow project conventions:
-      - Only select fields that are exposed in the corresponding Response DTO.
-      - Never use `select: { ...allFields }` or return full model objects.
-      - Do not fetch unused columns from the database.
-      - Ensure selected fields align exactly with @Expose() fields in Response DTO.
-      - Avoid selecting sensitive fields (password, tokens, internal flags).
-      - Keep select definitions minimal to prevent over-fetching.
-      - If relations are included, select only required sub-fields (no full nested objects).
-      - Select definitions must be deterministic and consistent across services.
+    - path: "**/*.spec.ts"
+      instructions: |
+        Review tests for:
+        - Meaningful assertions (not just "it doesn't throw").
+        - Edge cases and error paths covered.
+        - No hardcoded magic values — use @faker-js/faker.
+        - Proper cleanup in afterEach/afterAll.
 
-  - path: "src/modules/**/dtos/**"
-    instructions: |
-      Verify DTOs follow project conventions:
-      - All input fields have `class-validator` decorators.
-      - GraphQL support via `@InputType()` and `@Field()`.
-      - Response DTOs use `class-transformer` (@Exclude, @Expose).
-      - Create/Update/Response DTOs in separate files.
-      - No optional fields without clear reason.
-      - No business logic inside DTOs.
-      - Enums reused from central definitions.
-      - No sensitive data (passwords, tokens, secrets) returned in responses.
+    - path: ".github/workflows/**"
+      instructions: |
+        Review CI changes for:
+        - No `|| true` on test/lint/typecheck steps (must fail the build).
+        - Secrets not leaked in logs.
+        - Proper caching and artifact handling.
 
-  - path: "src/core/**"
-    instructions: |
-      Core infrastructure changes need extra scrutiny:
-      - Changes here affect every module. Verify backwards compatibility.
-      - Check that existing module contracts are preserved.
-      - Ensure auth/authorization changes don't create security gaps.
-      - Any change here requires explicit explanation in PR description.
-      - Confirmation of backwards compatibility.
-      - Version bump if breaking.
+chat:
+  auto_reply: true
 
-  - path: "**/*.spec.ts"
-    instructions: |
-      Review tests for:
-      - Meaningful assertions (not just "it doesn't throw").
-      - Edge cases and error paths covered.
-      - No hardcoded magic values — use @faker-js/faker.
-      - Proper cleanup in afterEach/afterAll.
-      - Mock external services properly.
-      - Cover success + failure cases.
-      - Validate authorization behavior.
-      - Validate multi-tenant isolation (accountId).
-      - Avoid relying on execution order.
-
-  - path: ".github/workflows/**"
-    instructions: |
-      Review CI changes for:
-      - No `|| true` on test/lint/typecheck steps (must fail the build).
-      - Secrets not leaked in logs.
-      - Proper caching and artifact handling.
-
-
-  - path: "src/**"
-    instructions: |
-      Security review checklist:
-      - No usage of `any`types.
-      - No console.log in production code.
-      - Use project logger abstraction.
-      - No debug logs committed.
-      - No commented-out code.
-      - Avoid deeply nested conditionals.
-      - Avoid Nested if statements . Use  Guard Clauses (Early returns) instead.
-
-  - path: "package.json"
-    instructions: |
-      Dependency review:
-      - No unused dependencies.
-      - Avoid deprecated packages.
-      - No duplicate functionality libraries.
-      - Lockfile must be committed.
-      - Verify Husky & typecheck setup:
-      - `husky` must be configured properly.
-      - A `typecheck` script must exist.
-      - `typecheck` must run `tsc --noEmit`.
-      - `prepare` script should install husky (e.g., `husky install`).
-
-  - path: ".husky/**"
-    instructions: |
-      Verify Husky configuration:
-      - A pre-commit hook must exist.
-      - Pre-commit hook must run `npm run typecheck`.
-      - The hook must fail the commit if typecheck fails.
-      - No usage of `|| true` or command chaining that bypasses failures.
-      - Ensure the script does not skip in CI unless explicitly intended.
+early_access: true
